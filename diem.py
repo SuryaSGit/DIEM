@@ -1,8 +1,8 @@
-from ultralytics import YOLO
-from picamera2 import Picamera2
+from picamzero import Camera
+import cv2
+import numpy as np
 import RPi.GPIO as GPIO
 import time
-import cv2
 
 # ---------------- CONFIG ----------------
 
@@ -11,30 +11,33 @@ TRIG_PIN = 23
 ECHO_PIN = 24
 BUZZER_PIN = 18
 
-DIST_THRESHOLD = 60  # cm
-WHITELIST = ["chair", "dining table", "bench"]
+DIST_THRESHOLD = 60       # cm
+MIN_CONTOUR_AREA = 6000   # tune this
 
-# ----------------------------------------
+# ---------------------------------------
 
 # GPIO SETUP
 GPIO.setmode(GPIO.BCM)
-
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(TRIG_PIN, GPIO.OUT)
 GPIO.setup(ECHO_PIN, GPIO.IN)
 GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
-# YOLO MODEL
-model = YOLO("yolov8n.pt")
+# CAMERA SETUP (picamzero)
+cam = Camera()
+cam.resolution = (640, 480)
+time.sleep(2)
 
-# CAMERA SETUP
-picam2 = Picamera2()
-picam2.configure(picam2.create_preview_configuration())
-picam2.start()
+# Background subtractor
+bg_subtractor = cv2.createBackgroundSubtractorMOG2(
+    history=120,
+    varThreshold=50,
+    detectShadows=False
+)
 
-# ----------------------------------------
+# ---------------------------------------
 
-def buzzer_alert(duration=0.5):
+def buzzer_alert(duration=0.4):
     GPIO.output(BUZZER_PIN, True)
     time.sleep(duration)
     GPIO.output(BUZZER_PIN, False)
@@ -47,89 +50,73 @@ def get_distance():
     time.sleep(0.00001)
     GPIO.output(TRIG_PIN, False)
 
-    start_time = time.time()
-    stop_time = time.time()
-
     while GPIO.input(ECHO_PIN) == 0:
-        start_time = time.time()
-
+        start = time.time()
     while GPIO.input(ECHO_PIN) == 1:
-        stop_time = time.time()
+        end = time.time()
 
-    elapsed = stop_time - start_time
-    distance = (elapsed * 34300) / 2  # cm
-    return distance
+    return ((end - start) * 34300) / 2
 
 def capture_frame():
-    frame = picam2.capture_array()
-    frame = cv2.resize(frame, (640, 480))
+    frame = cam.capture_array()
     return frame
 
-def detect_objects(frame):
-    results = model(frame)
-    detected = []
+def detect_obstacle(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (7, 7), 0)
 
-    for r in results:
-        boxes = r.boxes
-        for box in boxes:
-            cls = int(box.cls[0])
-            conf = float(box.conf[0])
+    fgmask = bg_subtractor.apply(blur)
+    _, thresh = cv2.threshold(fgmask, 200, 255, cv2.THRESH_BINARY)
 
-            if conf > 0.5:
-                label = model.names[cls]
-                detected.append(label)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    clean = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
-    return detected
+    contours, _ = cv2.findContours(
+        clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
-def is_dangerous(objects):
-    if len(objects) == 0:
-        return False
-
-    for obj in objects:
-        if obj not in WHITELIST:
+    for cnt in contours:
+        if cv2.contourArea(cnt) > MIN_CONTOUR_AREA:
             return True
+
     return False
 
-# ----------------------------------------
+# ---------------------------------------
 
 print("System Ready. Press button to activate.")
-
 system_on = False
 
 try:
     while True:
 
-        # BUTTON CHECK
         if GPIO.input(BUTTON_PIN) == 0:
             system_on = True
             print("System Activated")
             time.sleep(0.5)
 
         if system_on:
-
             distance = get_distance()
             print(f"Distance: {distance:.1f} cm")
 
             if distance < DIST_THRESHOLD:
-
-                print("Object detected nearby. Running vision...")
+                print("Object nearby — running vision")
 
                 frame = capture_frame()
-                objects = detect_objects(frame)
+                danger = detect_obstacle(frame)
 
-                print("Detected:", objects)
-
-                if is_dangerous(objects):
-                    print("DANGER OBJECT DETECTED")
+                if danger:
+                    print("⚠️ DANGEROUS OBSTACLE")
                     for _ in range(3):
-                        buzzer_alert(0.3)
+                        buzzer_alert()
                         time.sleep(0.2)
                 else:
-                    print("Object is safe")
-                time.sleep(2)  # Prevent spam scanning
+                    print("Area appears safe")
+
+                time.sleep(1.5)
 
         time.sleep(0.1)
 
 except KeyboardInterrupt:
     print("Exiting...")
     GPIO.cleanup()
+    cam.close()
