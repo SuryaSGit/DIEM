@@ -103,7 +103,6 @@ try:
         if GPIO.input(BUTTON_PIN) == 0:
             system_on = True
             print("System Activated")
-            buzzer_alert(0.2)
             time.sleep(0.5)
 
         if system_on:
@@ -127,8 +126,6 @@ try:
                         time.sleep(0.2)
                 else:
                     print("Object is safe")
-                    buzzer_alert(0.1)
-
                 time.sleep(2)  # Prevent spam scanning
 
         time.sleep(0.1)
