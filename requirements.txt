@@ -1,0 +1,6 @@
+# Runs on Raspberry Pi OS (Bookworm). picamera2 and RPi.GPIO ship with the OS
+# image; listed here for completeness.
+opencv-python
+numpy
+picamera2
+RPi.GPIO

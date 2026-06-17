@@ -1,0 +1,9 @@
+# Calibration snapshots captured at runtime
+reference.jpg
+whitelist.jpg
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
