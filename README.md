@@ -3,10 +3,8 @@
 > A wearable Raspberry Pi device that warns visually impaired users about
 > obstacles in their path, in real time, using audio alerts.
 
-<!-- TODO: add a photo or short GIF of the device here — hardware projects
-     live or die on a visual. e.g. ![DIEM device](docs/device.jpg) -->
 
-🏆 **Placed 4th out of 100+ teams** at <!-- TODO: hackathon name + date -->.
+🏆 **Placed 4th out of 100+ teams** at PULSE Hackathon
 
 ## What it does
 
